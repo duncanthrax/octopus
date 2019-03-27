@@ -119,12 +119,16 @@ namespace OctopusClient
 
                 using (BinaryReader reader = new BinaryReader(new MemoryStream(message)))
                 {
+                    byte client = reader.ReadByte();
                     ushort type = reader.ReadUInt16();
                     ushort code = reader.ReadUInt16();
                     int value = reader.ReadInt32();
 
-                    // Console.WriteLine("Type:" + type + " Code:" + code + " Value:" + value);
+                    if (client != 1) continue;
 
+                    Console.WriteLine("Type:" + type + " Code:" + code + " Value:" + value);
+
+                    continue;
                     // Keyboard
                     if (type == 1)
                     {
