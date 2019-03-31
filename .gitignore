@@ -1,3 +1,5 @@
 /windows/client/OctopusClient/bin
 /windows/client/OctopusClient/obj
 /windows/client/.vs
+/windows/client/.vscode
+

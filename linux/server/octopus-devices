@@ -1,0 +1,25 @@
+#!/bin/bash
+
+DEVDIR=/sys/class/input
+PREFIX=event
+
+for DEV in $(ls -1 $DEVDIR | grep $PREFIX | sort -V)
+do
+    NAME=$(cat $DEVDIR/$DEV/device/name)
+    P_ID="0x"$(cat $DEVDIR/$DEV/device/id/product)
+    V_ID="0x"$(cat $DEVDIR/$DEV/device/id/vendor)
+
+    CAPS=""
+    for CAP in $(ls -1 $DEVDIR/$DEV/device/capabilities | sort)
+    do
+        if [[ "0" != $(cat $DEVDIR/$DEV/device/capabilities/$CAP) ]]; then
+            CAPS=$CAPS" "$CAP
+        fi
+    done
+
+    echo "        name: $NAME"
+    echo "   vendor_id: $V_ID"
+    echo "  product_id: $P_ID"
+    echo "capabilities:$CAPS"
+    echo
+done
