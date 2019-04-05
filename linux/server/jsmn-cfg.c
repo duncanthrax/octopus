@@ -48,6 +48,13 @@ int jsmn_get_bool(jsmntok_t token) {
     return (strcmp(str,"true") == 0) ? 1:0;
 }
 
+int jsmn_get_int(jsmntok_t token) {
+    char *str = em_malloc(token.end - token.start + 1);
+    memcpy(str, &jsmn_cfg[token.start], token.end - token.start);
+    str[token.end - token.start] = '\0';
+    return atoi(str);
+}
+
 int jsmn_skip(jsmntok_t *tokens, int t) {
     int i = 0;
     t++;
@@ -173,6 +180,10 @@ void jsmn_cfg_parse(char *fname, em_device **devices_p, em_mapping **mappings_p,
 
         scalar_tnum = jsmn_object_key_value(tokens, mapping_tnum, "release_pressed", JSMN_PRIMITIVE);
         if (scalar_tnum > 0) mapping->release_pressed = jsmn_get_bool(tokens[scalar_tnum]);
+
+        scalar_tnum = jsmn_object_key_value(tokens, mapping_tnum, "always_client", JSMN_PRIMITIVE);
+        if (scalar_tnum > 0)
+            mapping->always_client = jsmn_get_int(tokens[scalar_tnum]);
 
         int combo_tnum = jsmn_object_key_value(tokens, mapping_tnum, "combo", JSMN_ARRAY);
         if (combo_tnum < 0) em_fatal("Config: 'combo' is mandatory.");

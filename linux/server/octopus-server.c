@@ -58,6 +58,14 @@ const char * em_event_code_get_name(unsigned int code) {
     return libevdev_event_code_get_name(EV_KEY, code);
 }
 
+em_client *em_client_by_idx(em_client *item, int idx) {
+    while (item) {
+        if (item->idx == idx) return item;
+        item = item->next;
+    }
+    return NULL;
+}
+
 void em_grab_devices(em_device *devices) {
     struct dirent **event_dev_list;
 
@@ -253,9 +261,9 @@ int main(int argc, char* argv[]) {
     // Currently active client
     em_client *active_client = clients;
 
-    void send_remote_event(uint16_t type, uint16_t code, int32_t value) {
+    void send_remote_event(em_client *client, uint16_t type, uint16_t code, int32_t value) {
         struct em_packet packet;
-        packet.clientIdx = (uint8_t) active_client->idx;
+        packet.clientIdx = (uint8_t) client->idx;
         packet.type      = type;
         packet.code      = code;
         packet.value     = value;
@@ -263,8 +271,8 @@ int main(int argc, char* argv[]) {
             em_fatal("Sending UDP packet failed.");
     }
 
-    void send_event(em_device *dev, uint16_t type, uint16_t code, int32_t value) {
-        if (active_client->local) {
+    void send_event(em_client *client, em_device *dev, uint16_t type, uint16_t code, int32_t value) {
+        if (client->local) {
             if (dev) {
                 int rc = libevdev_uinput_write_event(dev->uidev, type, code, value);
                 if (rc != 0) {
@@ -277,12 +285,12 @@ int main(int argc, char* argv[]) {
                 if (rc != 0) em_fatal("Sending event failed with rc %d on uinput device.", rc);
             }
         }
-        else send_remote_event(type, code, value);
+        else send_remote_event(client, type, code, value);
     }
 
-    void release_pressed() {
+    void release_pressed(em_client *client) {
         // Send release events for pressed keys on all devices
-        if (active_client->local) {
+        if (client->local) {
             em_device *dev = devices;
             while (dev) {
                 for (int k = 0; k < EM_MAX_COMBO; k++) {
@@ -296,7 +304,7 @@ int main(int argc, char* argv[]) {
         else {
             for (int k = 0; k < EM_MAX_COMBO; k++) {
                 if (active_keys[k])
-                    send_remote_event(EV_KEY, active_keys[k], 0);
+                    send_remote_event(client, EV_KEY, active_keys[k], 0);
             }
         }
         for (int k = 0; k < EM_MAX_COMBO; k++) { active_keys[k] = 0; };
@@ -374,22 +382,23 @@ int main(int argc, char* argv[]) {
 
                     int check_combos = 0;
                     int filter = 0;
+                    struct input_event aie = ie;
 
                     if (ie.type == EV_REL && ie.code == REL_WHEEL) {
-                        if (ie.value > 0) { ie.type = EV_KEY; ie.code = 0x400; ie.value = 1; };
-                        if (ie.value < 0) { ie.type = EV_KEY; ie.code = 0x402; ie.value = 1; };
+                        if (ie.value > 0) { aie.type = EV_KEY; aie.code = 0x400; aie.value = 1; };
+                        if (ie.value < 0) { aie.type = EV_KEY; aie.code = 0x402; aie.value = 1; };
                     }
                     if (ie.type == EV_REL && ie.code == REL_HWHEEL) {
-                        if (ie.value > 0) { ie.type = EV_KEY; ie.code = 0x401; ie.value = 1; };
-                        if (ie.value < 0) { ie.type = EV_KEY; ie.code = 0x403; ie.value = 1; };
+                        if (ie.value > 0) { aie.type = EV_KEY; aie.code = 0x401; aie.value = 1; };
+                        if (ie.value < 0) { aie.type = EV_KEY; aie.code = 0x403; aie.value = 1; };
                     }
 
-                    if (ie.type == EV_KEY && ie.value < 2) {
-                        if (ie.value) {
+                    if (aie.type == EV_KEY && aie.value < 2) {
+                        if (aie.value) {
                             // Key pressed
                             for (int k = 0; k < EM_MAX_COMBO; k++) {
-                                if (!active_keys[k] || active_keys[k] == ie.code) {
-                                    active_keys[k] = ie.code;
+                                if (!active_keys[k] || active_keys[k] == aie.code) {
+                                    active_keys[k] = aie.code;
                                     check_combos = 1;
                                     break;
                                 };
@@ -398,7 +407,7 @@ int main(int argc, char* argv[]) {
                         else {
                             // Key released
                             for (int k = 0; k < EM_MAX_COMBO; k++) {
-                                if (active_keys[k] == ie.code) active_keys[k] = 0;
+                                if (active_keys[k] == aie.code) active_keys[k] = 0;
                             }
                         }
                     }
@@ -455,7 +464,7 @@ int main(int argc, char* argv[]) {
 
                     // Forward event to output if we don't want it filtered
                     if (!filter) {
-                        send_event(dev, ie.type, ie.code, ie.value);
+                        send_event(active_client, dev, ie.type, ie.code, ie.value);
                     }
                 }
 
@@ -472,28 +481,35 @@ int main(int argc, char* argv[]) {
             em_mapping *mapping = mappings;
             while (mapping) {
                 if (mapping->send_output) {
-                    if (mapping->release_pressed) release_pressed();
+                    em_client *which_client = active_client;
+
+                    if (mapping->always_client) {
+                        em_client *c = em_client_by_idx(clients, mapping->always_client - 1);
+                        if (c) which_client = c;
+                    }
+
+                    if (mapping->release_pressed) release_pressed(which_client);
                     for (int k = 0; k < EM_MAX_OUTPUT_EVENTS; k++) {
                         if (!mapping->output[k]) break;
                         if (mapping->output[k]->code >= 0x400) {
                             switch (mapping->output[k]->code) {
                                 case 0x400:
-                                    send_event(NULL, EV_REL, REL_WHEEL, 1);
+                                    send_event(which_client, NULL, EV_REL, REL_WHEEL, 1);
                                 break;
                                 case 0x401:
-                                    send_event(NULL, EV_REL, REL_HWHEEL, 1);
+                                    send_event(which_client, NULL, EV_REL, REL_HWHEEL, 1);
                                 break;
                                 case 0x402:
-                                    send_event(NULL, EV_REL, REL_WHEEL, -1);
+                                    send_event(which_client, NULL, EV_REL, REL_WHEEL, -1);
                                 break;
                                 case 0x403:
-                                    send_event(NULL, EV_REL, REL_HWHEEL, -1);
+                                    send_event(which_client, NULL, EV_REL, REL_HWHEEL, -1);
                                 break;
                             }
                         }
-                        else send_event(NULL, mapping->output[k]->type, mapping->output[k]->code, mapping->output[k]->value);
+                        else send_event(which_client, NULL, mapping->output[k]->type, mapping->output[k]->code, mapping->output[k]->value);
                     }
-                    send_event(NULL, EV_SYN, SYN_REPORT, 0);
+                    send_event(which_client, NULL, EV_SYN, SYN_REPORT, 0);
                     mapping->send_output = 0;
                 }
 
@@ -503,7 +519,7 @@ int main(int argc, char* argv[]) {
             // Switch clients, if requested
             if (switch_client) {
                 if (switch_client != active_client) {
-                    release_pressed();
+                    release_pressed(active_client);
                     printf("Switching to client #%u\n", switch_client->idx);
                     active_client = switch_client;
                 }

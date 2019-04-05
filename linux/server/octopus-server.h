@@ -34,6 +34,7 @@ typedef struct em_mapping_type {
     struct input_event *output[EM_MAX_OUTPUT_EVENTS];
     int                 filter_last;
     int                 release_pressed;
+    int                 always_client;
 
     int                 send_output;
 

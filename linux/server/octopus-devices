@@ -21,5 +21,6 @@ do
     echo "   vendor_id: $V_ID"
     echo "  product_id: $P_ID"
     echo "capabilities:$CAPS"
+    echo "      device: /dev/input/$DEV"
     echo
 done
