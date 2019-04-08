@@ -35,6 +35,7 @@ typedef struct em_mapping_type {
     int                 filter_last;
     int                 release_pressed;
     int                 always_client;
+    int                 only_device;
 
     int                 send_output;
 

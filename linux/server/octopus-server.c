@@ -160,7 +160,7 @@ void em_grab_devices(em_device *devices) {
 
             char *name = strdup(libevdev_get_name(dev->evdev));
             if (!name) em_fatal("strdup() failed");
-            snprintf(fpath, EM_MAX_STR, "%s [evdev-mapper]", name);
+            snprintf(fpath, EM_MAX_STR, "%s [octopus]", name);
             libevdev_set_name(dev->evdev, fpath);
             free(name);
 
@@ -238,7 +238,7 @@ int main(int argc, char* argv[]) {
     // Open our output device. Enable for all KEY_* and BTN_*.
     struct libevdev_uinput *uiodev;
     struct libevdev *odev = libevdev_new();
-    libevdev_set_name(odev, "evdev-mapper output");
+    libevdev_set_name(odev, "Octopus Output");
     libevdev_enable_event_type(odev, EV_KEY);
     for (int k = 0; k < KEY_CNT; k++) {
         if (em_event_code_get_name(k)) libevdev_enable_event_code(odev, EV_KEY, k, NULL);
@@ -423,6 +423,10 @@ int main(int argc, char* argv[]) {
                         // Check mapping combos
                         em_mapping *mapping = mappings;
                         while (mapping) {
+                            // If only_device is set, check if we need to ignore this mapping.
+                            if (mapping->only_device && mapping->only_device != (dev->idx+1))
+                                goto NEXT_MAPPING;
+
                             for (int k = 0; k < EM_MAX_COMBO; k++) {
                                 if (active_keys[k] && !check_combo_array(mapping->combo, active_keys[k]))
                                     goto NEXT_MAPPING;
