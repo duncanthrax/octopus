@@ -1,20 +1,18 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Net.Sockets;
 using System.Net;
 using System.IO;
 using System.Runtime.InteropServices;
-
+using Xxtea;
 
 namespace OctopusClient
 {
-    class Program
+    class OctopusClient
     {
         [StructLayout(LayoutKind.Sequential)]
-        public struct MOUSEINPUT {
+        public struct MOUSEINPUT
+        {
             public int dx;
             public int dy;
             public int mouseData;
@@ -23,7 +21,8 @@ namespace OctopusClient
             public IntPtr dwExtraInfo;
         }
         [StructLayout(LayoutKind.Sequential)]
-        public struct KEYBDINPUT {
+        public struct KEYBDINPUT
+        {
             public ushort wVk;
             public ushort wScan;
             public uint dwFlags;
@@ -31,13 +30,15 @@ namespace OctopusClient
             public IntPtr dwExtraInfo;
         }
         [StructLayout(LayoutKind.Sequential)]
-        public struct HARDWAREINPUT {
+        public struct HARDWAREINPUT
+        {
             public uint uMsg;
             public ushort wParamL;
             public ushort wParamH;
         }
         [StructLayout(LayoutKind.Explicit)]
-        public struct InputBatch {
+        public struct InputBatch
+        {
             [FieldOffset(0)]
             public HARDWAREINPUT Hardware;
             [FieldOffset(0)]
@@ -46,37 +47,41 @@ namespace OctopusClient
             public MOUSEINPUT Mouse;
         }
         [StructLayout(LayoutKind.Sequential)]
-        public struct INPUT {
+        public struct INPUT
+        {
             public SendInputEventType type;
             public InputBatch data;
         }
         [Flags]
-        public enum LinuxEventTypes : uint {
-            EV_SYN		 = 0x00,
-            EV_KEY		 = 0x01,
-            EV_REL		 = 0x02,
-            EV_ABS		 = 0x03,
-            EV_MSC		 = 0x04,
-            EV_SW		 = 0x05,
-            EV_LED		 = 0x11,
-            EV_SND		 = 0x12,
-            EV_REP		 = 0x14,
-            EV_FF		 = 0x15,
-            EV_PWR		 = 0x16,
+        public enum LinuxEventTypes : uint
+        {
+            EV_SYN = 0x00,
+            EV_KEY = 0x01,
+            EV_REL = 0x02,
+            EV_ABS = 0x03,
+            EV_MSC = 0x04,
+            EV_SW = 0x05,
+            EV_LED = 0x11,
+            EV_SND = 0x12,
+            EV_REP = 0x14,
+            EV_FF = 0x15,
+            EV_PWR = 0x16,
             EV_FF_STATUS = 0x17,
-            EV_MAX		 = 0x1f,
-            EV_CNT		 = 0x20
+            EV_MAX = 0x1f,
+            EV_CNT = 0x20
         }
-        public enum LinuxSynCodes : uint {
-            SYN_REPORT    = 0,
-            SYN_CONFIG    = 1,
+        public enum LinuxSynCodes : uint
+        {
+            SYN_REPORT = 0,
+            SYN_CONFIG = 1,
             SYN_MT_REPORT = 2,
-            SYN_DROPPED   = 3,
-            SYN_MAX       = 0xf,
-            SYN_CNT       = 0x10
+            SYN_DROPPED = 3,
+            SYN_MAX = 0xf,
+            SYN_CNT = 0x10
         }
 
-        public enum MouseEventFlags : uint {
+        public enum MouseEventFlags : uint
+        {
             MOUSEEVENTF_MOVE = 0x0001,
             MOUSEEVENTF_LEFTDOWN = 0x0002,
             MOUSEEVENTF_LEFTUP = 0x0004,
@@ -97,25 +102,26 @@ namespace OctopusClient
             InputKeyboard,
             InputHardware
         }
-        public enum UsefulConst : uint {
-            BTN_MIN    = 0x0100,
-            BTN_MAX    = 0x015f,
+        public enum UsefulConst : uint
+        {
+            BTN_MIN = 0x0100,
+            BTN_MAX = 0x015f,
 
             // Supported mouse buttons
-            BTN_LEFT   = 0x110,
-            BTN_RIGHT  = 0x111,
+            BTN_LEFT = 0x110,
+            BTN_RIGHT = 0x111,
             BTN_MIDDLE = 0x112,
-            BTN_SIDE   = 0x113,
-            BTN_EXTRA  = 0x114,
+            BTN_SIDE = 0x113,
+            BTN_EXTRA = 0x114,
 
             // Supported relative axes
-            REL_X      = 0x00,
-            REL_Y      = 0x01,
+            REL_X = 0x00,
+            REL_Y = 0x01,
             REL_HWHEEL = 0x06,
-            REL_WHEEL  = 0x08
+            REL_WHEEL = 0x08
         }
 
-        public dictionary LinuxKeyCode2Extended = new Dictionary<uint, uint> {
+        public Dictionary<uint, ushort> LinuxKeyCode2Extended = new Dictionary<uint, ushort> {
             {  96, 0x001c },    // KEY_KPENTER
             {  97, 0x001d },    // KEY_RIGHTCTRL
             {  98, 0x0035 },    // KEY_KPSLASH
@@ -126,7 +132,7 @@ namespace OctopusClient
             { 143, 0x0063 }     // KEY_WAKEUP
         };
 
-        public dictionary LinuxKeyCode2Virtual = new Dictionary<uint, uint> {
+        public Dictionary<uint, ushort> LinuxKeyCode2Virtual = new Dictionary<uint, ushort> {
             // These would need fakeshifts with scancodes, so we use virtual codes instead.
             { 103, 0x0026 },   // KEY_UP
             { 105, 0x0025 },   // KEY_LEFT
@@ -140,6 +146,7 @@ namespace OctopusClient
             { 111, 0x002e },   // KEY_DELETE
             { 125, 0x005b },   // KEY_LEFTMETA
             { 126, 0x005c },   // KEY_RIGHTMETA
+
             // Nonstandard scancodes, use virtual codes instead.
             { 113, 0x00AD },   // KEY_MUTE
             { 114, 0x00AE },   // KEY_VOLUMEDOWN
@@ -155,9 +162,9 @@ namespace OctopusClient
         [DllImport("user32.dll", SetLastError = true)]
         public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
 
-        public INPUT[] stackedInputs;
+        public List<INPUT> stackedInputs = new List<INPUT>();
 
-        static public int StackKbdInput(ushort wVk, ushort wScan, uint dwFlags) {
+        public void StackKbdInput(ushort wVk, ushort wScan, uint dwFlags) {
             INPUT input = new INPUT { type = SendInputEventType.InputKeyboard };
             input.data.Keyboard = new KEYBDINPUT();
             input.data.Keyboard.time = 0;
@@ -165,10 +172,10 @@ namespace OctopusClient
             input.data.Keyboard.wVk = wVk;
             input.data.Keyboard.wScan = wScan;
             input.data.Keyboard.dwFlags = dwFlags;
-            stackedInputs.push(input);
+            stackedInputs.Add(input);
         }
 
-        static public int StackMouseInput(int dx, int dy, int mouseData, uint dwFlags) {
+        public void StackMouseInput(int dx, int dy, int mouseData, uint dwFlags) {
             INPUT input = new INPUT { type = SendInputEventType.InputMouse };
             input.data.Mouse = new MOUSEINPUT();
             input.data.Mouse.time = 0;
@@ -177,16 +184,16 @@ namespace OctopusClient
             input.data.Mouse.dy = dy;
             input.data.Mouse.mouseData = mouseData;
             input.data.Mouse.dwFlags = dwFlags;
-            stackedInputs.push(input);
+            stackedInputs.Add(input);
         }
 
-        static public int SendStackedInputs() {
-            SendInput(stackedInputs.Length, stackedInputs, Marshal.SizeOf(typeof(INPUT)));
-            Array.Clear(stackedInputs, 0, stackedInputs.Length);
+        public void SendStackedInputs() {
+            INPUT[] inputs = stackedInputs.ToArray();
+            SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
+            stackedInputs.Clear();
         }
 
-        static void Main(string[] args)
-        {
+        public void Run(byte clientId, string key) {
             UdpClient socket = new UdpClient(4020);
             socket.JoinMulticastGroup(IPAddress.Parse("239.255.77.88"));
             IPEndPoint RemoteIpEndPoint = new IPEndPoint(IPAddress.Any, 0);
@@ -197,82 +204,105 @@ namespace OctopusClient
                 using (BinaryReader reader = new BinaryReader(new MemoryStream(message))) {
 
                     byte client = reader.ReadByte();
-                    ushort type = reader.ReadUInt16();
-                    ushort code = reader.ReadUInt16();
-                    int value   = reader.ReadInt32();
+                    if (client != clientId) continue;
 
-                    // FIXME
-                    if (client != 1) continue;
+                    byte enc = reader.ReadByte();
+                    ushort type = 0;
+                    ushort code = 0;
+                    int value   = 0;
 
+                    if (enc > 0) {
+                        Byte[] encrypted = reader.ReadBytes(enc);
+                        Byte[] decrypted = XXTEA.Decrypt(encrypted, key);
+                        BinaryReader encreader = new BinaryReader(new MemoryStream(decrypted));
+                        UInt32 rnd = encreader.ReadUInt32();
+                        type = encreader.ReadUInt16();
+                        code = encreader.ReadUInt16();
+                        value = encreader.ReadInt32();
+                    }
+                    else if (enc == 0) {
+                        UInt32 rnd = reader.ReadUInt32();
+                        type = reader.ReadUInt16();
+                        code = reader.ReadUInt16();
+                        value = reader.ReadInt32();
+                    }
+                    else continue;
+                    
                     //Console.WriteLine("Type:" + type + " Code:" + code + " Value:" + value);
-
                     //continue;
 
-                    if (type == LinuxEventTypes.EV_SYN) {
+                    if (type == (uint)LinuxEventTypes.EV_SYN) {
                         // We only handle SYN_REPORT
-                        if (code == LinuxSynCodes.SYN_REPORT) {
+                        if (code == (uint)LinuxSynCodes.SYN_REPORT) {
                             // Send buffered inputs
                             SendStackedInputs();
                         }
                     }
-                    else if (type == LinuxEventTypes.EV_KEY) {
-
-                        if (code >= UsefulConst.BTN_MIN && code <= UsefulConst.BTN_MAX) {
+                    else if (type == (uint)LinuxEventTypes.EV_KEY) {
+                        if (code >= (uint)UsefulConst.BTN_MIN && code <= (uint)UsefulConst.BTN_MAX) {
                             // Mouse Buttons
-                            if (code == UsefulConst.BTN_LEFT) {
-                                StackMouseInput(0, 0, 0, value ? (uint)MouseEventFlags.MOUSEEVENTF_LEFTDOWN
+                            if (code == (uint)UsefulConst.BTN_LEFT) {
+                                StackMouseInput(0, 0, 0, value > 0 ? (uint)MouseEventFlags.MOUSEEVENTF_LEFTDOWN
                                                                : (uint)MouseEventFlags.MOUSEEVENTF_LEFTUP);
                             }
-                            else if (code == UsefulConst.BTN_RIGHT) {
-                                StackMouseInput(0, 0, 0, value ? (uint)MouseEventFlags.MOUSEEVENTF_RIGHTDOWN
+                            else if (code == (uint)UsefulConst.BTN_RIGHT) {
+                                StackMouseInput(0, 0, 0, value > 0 ? (uint)MouseEventFlags.MOUSEEVENTF_RIGHTDOWN
                                                                : (uint)MouseEventFlags.MOUSEEVENTF_RIGHTUP);
                             }
-                            else if(code == UsefulConst.BTN_MIDDLE) {
-                                StackMouseInput(0, 0, 0, value ? (uint)MouseEventFlags.MOUSEEVENTF_MIDDLEDOWN
+                            else if (code == (uint)UsefulConst.BTN_MIDDLE) {
+                                StackMouseInput(0, 0, 0, value > 0 ? (uint)MouseEventFlags.MOUSEEVENTF_MIDDLEDOWN
                                                                : (uint)MouseEventFlags.MOUSEEVENTF_MIDDLEUP);
                             }
-                            else if (code == UsefulConst.BTN_SIDE) {
-                                StackMouseInput(0, 0, 1, value ? (uint)MouseEventFlags.MOUSEEVENTF_XDOWN
+                            else if (code == (uint)UsefulConst.BTN_SIDE) {
+                                StackMouseInput(0, 0, 1, value > 0 ? (uint)MouseEventFlags.MOUSEEVENTF_XDOWN
                                                                : (uint)MouseEventFlags.MOUSEEVENTF_XUP);
                             }
-                            else if (code == UsefulConst.BTN_EXTRA) {
-                                StackMouseInput(0, 0, 2, value ? (uint)MouseEventFlags.MOUSEEVENTF_XDOWN
+                            else if (code == (uint)UsefulConst.BTN_EXTRA) {
+                                StackMouseInput(0, 0, 2, value > 0 ? (uint)MouseEventFlags.MOUSEEVENTF_XDOWN
                                                                : (uint)MouseEventFlags.MOUSEEVENTF_XUP);
                             }
                         }
                         else {
                             // Keyboard key
-                            if (LinuxKeyCode2Virtual[code]) {
+                            if (LinuxKeyCode2Virtual.ContainsKey(code)) {
                                 // Must use wVk mechanism instead of raw scancode
-                                StackKbdInput(LinuxKeyCode2Virtual[code], 0, value ? 0x0 : 0x2);
+                                StackKbdInput(LinuxKeyCode2Virtual[code], 0, (uint)(value > 0 ? 0x0 : 0x2));
                             }
-                            else if (LinuxKeyCode2Extended[code]) {
+                            else if (LinuxKeyCode2Extended.ContainsKey(code)) {
                                 // Extended key
-                                StackKbdInput(0, LinuxKeyCode2Extended[code], value ? 0x1 : 0x3);
+                                StackKbdInput(0, 0xe0, 0);
+                                StackKbdInput(0, LinuxKeyCode2Extended[code], (uint)(value > 0 ? 0x9 : 0xb));
                             }
                             else {
                                 // Raw scancode
-                                StackKbdInput(0, code, value ? 0x8 : 0xa);
+                                StackKbdInput(0, code, (uint)(value > 0 ? 0x8 : 0xa));
                             }
                         }
                     }
-                    else if (type == LinuxEventTypes.EV_REL) {
-
-                        if (code == UsefulConst.REL_X) {
+                    else if (type == (uint)LinuxEventTypes.EV_REL) {
+                        if (code == (uint)UsefulConst.REL_X) {
                             StackMouseInput(value, 0, 0, (uint)MouseEventFlags.MOUSEEVENTF_MOVE);
                         }
-                        else if (code == UsefulConst.REL_Y) {
+                        else if (code == (uint)UsefulConst.REL_Y) {
                             StackMouseInput(0, value, 0, (uint)MouseEventFlags.MOUSEEVENTF_MOVE);
                         }
-                        else if (code == UsefulConst.REL_WHEEL) {
+                        else if (code == (uint)UsefulConst.REL_WHEEL) {
                             StackMouseInput(0, 0, value * 120, (uint)MouseEventFlags.MOUSEEVENTF_WHEEL);
                         }
-                        else if (code == UsefulConst.REL_HWHEEL) {
+                        else if (code == (uint)UsefulConst.REL_HWHEEL) {
                             StackMouseInput(0, 0, value * 120, (uint)MouseEventFlags.MOUSEEVENTF_HWHEEL);
                         }
                     }
                 }
             }
+        }
+    }
+
+    class Program
+    {
+        static void Main(string[] args) {
+            OctopusClient octopusClient = new OctopusClient();
+            octopusClient.Run(byte.Parse(args[0]), args[1]);
         }
     }
 }
