@@ -1,0 +1,5 @@
+octopus (1.0.0-1~bionic) bionic; urgency=medium
+
+  * Update to 1.0.0-1
+
+ -- Tom Kistner <tom@kistner.nu>  Mon, 08 Apr 2019 21:41:05 +0200
