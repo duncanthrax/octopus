@@ -240,6 +240,9 @@ void jsmn_cfg_parse(char *fname, em_device **devices_p, em_mapping **mappings_p,
         int scalar_tnum = jsmn_object_key_value(tokens, client_tnum, "local", JSMN_PRIMITIVE);
         if (scalar_tnum > 0) client->local = jsmn_get_bool(tokens[scalar_tnum]);
 
+        scalar_tnum = jsmn_object_key_value(tokens, client_tnum, "key", JSMN_STRING);
+        if (scalar_tnum > 0) client->key = jsmn_get_value(tokens[scalar_tnum]);
+
         int combo_tnum = jsmn_object_key_value(tokens, client_tnum, "combo", JSMN_ARRAY);
         if (combo_tnum > 0)
             for (int event_num = 0; (event_num < tokens[combo_tnum].size && event_num < EM_MAX_COMBO); event_num++) {

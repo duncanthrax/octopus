@@ -1,5 +1,6 @@
+octopus-server
+
 .vscode
-src/roccat-vulcan
 *.dsc
 *.build
 *.buildinfo

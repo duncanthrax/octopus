@@ -3,7 +3,7 @@
 cd $(dirname $(realpath $0))
 
 DATE=$(date -R)
-VERSION="1.0.0-1"
+VERSION="1.0.1-1"
 
 for RELEASE in disco cosmic bionic
 do

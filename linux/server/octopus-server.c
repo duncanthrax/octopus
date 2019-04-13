@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <bsd/stdlib.h>
 #include <unistd.h>
 #include <dirent.h>
 #include <string.h>
@@ -13,6 +14,7 @@
 #include <arpa/inet.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <xxtea.h>
 #include <libevdev/libevdev.h>
 #include <libevdev/libevdev-uinput.h>
 
@@ -96,7 +98,14 @@ void em_grab_devices(em_device *devices) {
     while (dev) {
         char fpath[EM_MAX_STR+1];
         char cmpstr[EM_MAX_STR+1];
+
         if (dev->active) goto NEXT_DEV;
+
+        if (dev->device) {
+            free(dev->device);
+            dev->device = NULL;
+        }
+
         int found = 0;
         for (int i = 0; i < num_entries; i++) {
             snprintf(fpath, EM_MAX_STR, EM_INPUT_DEV_DIR"/%s/device/id/product", event_dev_list[i]->d_name);
@@ -132,7 +141,7 @@ void em_grab_devices(em_device *devices) {
 
                     if (ok) {
                         if (found) {
-                            if (!dev->device) printf("Device #%d: Found more than one device, only using %s\n", dev->idx, dev->device);
+                            if (dev->device) printf("Device #%d: Found more than one device, only using %s\n", dev->idx, dev->device);
                         }
                         else {
                             if (dev->device) free(dev->device);
@@ -263,21 +272,39 @@ int main(int argc, char* argv[]) {
 
     void send_remote_event(em_client *client, uint16_t type, uint16_t code, int32_t value) {
         struct em_packet packet;
-        packet.clientIdx = (uint8_t) client->idx;
+        memset(&packet, 0, sizeof(packet));
+        packet.clientIdx = (uint8_t)client->idx;
+        packet.enc       = 0;
         packet.type      = type;
         packet.code      = code;
         packet.value     = value;
-        if (sendto(sock, &packet, sizeof(em_packet), 0, (struct sockaddr *)&addr, sizeof(addr)) < 0)
-            em_fatal("Sending UDP packet failed.");
+        if (client->key) {
+            packet.enc = EM_ENC_ENC_LEN;
+            // Add 32 random bits to make chosen plaintext a bit harder
+            packet.rnd = arc4random();
+            size_t len;
+            char *encdata = xxtea_encrypt(&(packet.rnd), EM_ENC_CLEAR_LEN, client->key, &len);
+            if (!encdata || len != EM_ENC_ENC_LEN) em_fatal("Encrypting UDP packet failed.");
+            memcpy(&(packet.rnd), encdata, EM_ENC_ENC_LEN);
+            free(encdata);
+            if (sendto(sock, &packet, EM_ENC_PACKET_LEN, 0, (struct sockaddr *)&addr, sizeof(addr)) < 0)
+                em_fatal("Sending encrypted UDP packet failed.");
+        }
+        else {
+            if (sendto(sock, &packet, EM_CLEAR_PACKET_LEN, 0, (struct sockaddr *)&addr, sizeof(addr)) < 0)
+                em_fatal("Sending UDP packet failed.");
+        }
     }
 
-    void send_event(em_client *client, em_device *dev, uint16_t type, uint16_t code, int32_t value) {
+    // Will only be called for active devices
+    int send_event(em_client *client, em_device *dev, uint16_t type, uint16_t code, int32_t value) {
         if (client->local) {
             if (dev) {
                 int rc = libevdev_uinput_write_event(dev->uidev, type, code, value);
                 if (rc != 0) {
                     printf("Device #%d: Sending event failed with rc %d, deactivating.\n", dev->idx, rc);
                     dev->active = 0;
+                    return 0;
                 }
             }
             else {
@@ -286,6 +313,8 @@ int main(int argc, char* argv[]) {
             }
         }
         else send_remote_event(client, type, code, value);
+
+        return 1;
     }
 
     void release_pressed(em_client *client) {
@@ -293,11 +322,13 @@ int main(int argc, char* argv[]) {
         if (client->local) {
             em_device *dev = devices;
             while (dev) {
-                for (int k = 0; k < EM_MAX_COMBO; k++) {
-                    if (active_keys[k])
-                        libevdev_uinput_write_event(dev->uidev, EV_KEY, active_keys[k], 0);
+                if (dev->active) {
+                    for (int k = 0; k < EM_MAX_COMBO; k++) {
+                        if (active_keys[k])
+                            libevdev_uinput_write_event(dev->uidev, EV_KEY, active_keys[k], 0);
+                    }
+                    libevdev_uinput_write_event(dev->uidev, EV_SYN, SYN_REPORT, 0);
                 }
-                libevdev_uinput_write_event(dev->uidev, EV_SYN, SYN_REPORT, 0);
                 dev = dev->next;
             }
         }
@@ -312,6 +343,7 @@ int main(int argc, char* argv[]) {
 
     // Main loop
     while (1) {
+        NEXT_GRAB:
 
         // Check if new devices have shown up
         em_grab_devices(devices);
@@ -319,13 +351,14 @@ int main(int argc, char* argv[]) {
         // Set up pollfds
         struct pollfd pollfds[EM_MAX_DEVICES];
         memset(pollfds, 0, sizeof(pollfds));
-        int num_devs = 0;
+        int num_pollfds = 0;
         em_device * dev = devices;
         while (dev) {
             if (dev->active) {
-                pollfds[dev->idx].fd = dev->evfd;
-                pollfds[dev->idx].events = POLLIN;
-                num_devs++;
+                dev->pollfd_idx = num_pollfds;
+                pollfds[dev->pollfd_idx].fd = dev->evfd;
+                pollfds[dev->pollfd_idx].events = POLLIN;
+                num_pollfds++;
             }
             dev = dev->next;
         }
@@ -333,31 +366,32 @@ int main(int argc, char* argv[]) {
         time_t last_device_check = time(NULL);
         em_client *switch_client = NULL;
 
-        // poll() loop, quit for device rescan every five seconds
+        // poll() loop, quit for device regrab every five seconds
         while (1) {
-            int rc = poll(pollfds, num_devs, 1000);
+            int rc = poll(pollfds, num_pollfds, 1000);
             // All but EINTR are deadly
             if (rc < 0 && errno != EINTR) em_fatal("poll() failed with errno %d\n", errno);
             // poll() timeout
             if (rc == 0) goto NEXT_POLL;
 
             dev = devices;
+
             while (dev) {
                 // Skip nonexistant devices
                 if (!dev->active)
                     goto NEXT_DEV;
 
                 // Check for errors
-                if ( (pollfds[dev->idx].revents & POLLERR) ||
-                     (pollfds[dev->idx].revents & POLLHUP) ||
-                     (pollfds[dev->idx].revents & POLLNVAL) ) {
-                    printf("Device #%d: poll() error on fd (revents 0x%04hx), deactivating.\n", dev->idx, pollfds[dev->idx].revents);
+                if ( (pollfds[dev->pollfd_idx].revents & POLLERR) ||
+                     (pollfds[dev->pollfd_idx].revents & POLLHUP) ||
+                     (pollfds[dev->pollfd_idx].revents & POLLNVAL) ) {
+                    printf("Device #%d: poll() error on fd (revents 0x%04hx), deactivating.\n", dev->idx, pollfds[dev->pollfd_idx].revents);
                     dev->active = 0;
-                    goto NEXT_DEV;
+                    goto NEXT_GRAB;
                 }
 
                 // Check for readable events
-                if (!(pollfds[dev->idx].revents & POLLIN))
+                if (!(pollfds[dev->pollfd_idx].revents & POLLIN))
                     goto NEXT_DEV;
 
                 int mode = LIBEVDEV_READ_FLAG_NORMAL;
@@ -408,6 +442,10 @@ int main(int argc, char* argv[]) {
                             // Key released
                             for (int k = 0; k < EM_MAX_COMBO; k++) {
                                 if (active_keys[k] == aie.code) active_keys[k] = 0;
+                            }
+                            if (dev->filter_release_code == aie.code) {
+                                filter = 1;
+                                dev->filter_release_code = 0;
                             }
                         }
                     }
@@ -467,8 +505,23 @@ int main(int argc, char* argv[]) {
                     }
 
                     // Forward event to output if we don't want it filtered
-                    if (!filter) {
-                        send_event(active_client, dev, ie.type, ie.code, ie.value);
+                    if (filter) {
+                        // When filtering keypress ...
+                        if (ie.value > 0) {
+                            // ... remember to filter the release as well.
+                            dev->filter_release_code = ie.code;
+                            // ... remove filtered keypress from active_keys
+                            for (int k = 0; k < EM_MAX_COMBO; k++) {
+                               if (active_keys[k] >= ie.code) active_keys[k] = 0;
+                            }
+                        }
+                    }
+                    else {
+                        if (!send_event(active_client, dev, ie.type, ie.code, ie.value)) {
+                            // Something wrong with the device
+                            dev->active = 0;
+                            goto NEXT_GRAB;
+                        }
                     }
                 }
 

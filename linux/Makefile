@@ -1,11 +1,13 @@
-SUBDIRS := server
 BINDIR  := /usr/bin
 
-all: server
+all: xxtea server
+
+xxtea:
+	$(MAKE) -C xxtea
 server:
 	$(MAKE) -C server
 
-.PHONY: all server
+.PHONY: all xxtea server
 
 install:
 	mkdir -p ${DESTDIR}${BINDIR}
@@ -13,4 +15,5 @@ install:
 	cp server/octopus-devices ${DESTDIR}${BINDIR}/
 
 clean:
+	$(MAKE) -C xxtea clean
 	$(MAKE) -C server clean

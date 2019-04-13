@@ -2,8 +2,8 @@ src = $(wildcard *.c)
 obj = $(src:.c=.o)
 
 NAME    := octopus-server
-CFLAGS   = -I/usr/include/libevdev-1.0 -I. -L./jsmn -DJSMN_STRICT=1
-LDFLAGS  = -ljsmn -levdev
+CFLAGS   = -I/usr/include/libevdev-1.0 -I../xxtea -I. -L./jsmn -L../xxtea -DJSMN_STRICT=1
+LDFLAGS  = -ljsmn -levdev -lxxtea -lbsd
 
 .PHONY: all
 all: jsmn $(NAME)

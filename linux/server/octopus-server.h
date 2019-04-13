@@ -6,6 +6,7 @@
 
 #define EM_MULTICAST_GROUP "239.255.77.88"
 #define EM_MULTICAST_PORT  4020
+#define EM_MAX_UDP_SIZE 64
 
 #define EM_MAX_CLIENTS 9
 #define EM_MAX_DEVICES  9
@@ -24,6 +25,7 @@ typedef struct em_client_type {
     int                 combo[EM_MAX_COMBO];
 
     int                 local;
+    char               *key;
 
     em_client          *next;
 } em_client;
@@ -54,6 +56,10 @@ typedef struct em_device_type {
 
     // Active state
     int                     active;
+    int                     pollfd_idx;
+
+    // Filter KEY/BTN release
+    uint16_t                filter_release_code;
 
     // Filled by em_grab_devices()
     char                   *device;
@@ -63,11 +69,22 @@ typedef struct em_device_type {
     struct libevdev_uinput *uidev;
 } em_device;
 
+
+#define EM_ENC_CLEAR_LEN 12
+#define EM_ENC_ENC_LEN   16
+#define EM_CLEAR_PACKET_LEN (EM_ENC_CLEAR_LEN + 2)
+#define EM_ENC_PACKET_LEN   (EM_ENC_ENC_LEN   + 2)
 struct __attribute__((__packed__)) em_packet {
-    uint8_t                 clientIdx;
-    uint16_t                type;
-    uint16_t                code;
-    int32_t                 value;
+    // Sent unencrypted
+    uint8_t                 clientIdx;  // 1
+    uint8_t                 enc;        // 1
+    // Encrypted parts, sending 12 bytes in the clear, 16 when encrypted.
+    uint32_t                rnd;        // 4
+    uint16_t                type;       // 2
+    uint16_t                code;       // 2
+     int32_t                value;      // 4
+    // Extra bytes for encryption
+    uint32_t                _space_;    // 4
 } em_packet;
 
 void      em_usage();
