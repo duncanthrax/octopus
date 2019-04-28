@@ -11,7 +11,7 @@
 #include <libevdev/libevdev.h>
 #include <libevdev/libevdev-uinput.h>
 
-#define DEFAULT_MULTICAST_GROUP "239.255.77.77"
+#define DEFAULT_MULTICAST_GROUP "239.255.77.88"
 #define DEFAULT_PORT 4020
 
 #define MIN_PACKET_SIZE 14
@@ -87,12 +87,6 @@ error_exit:
 }
 
 int main(int argc, char*argv[]) {
-  int sockfd, error;
-  struct sockaddr_in servaddr;
-  struct ip_mreq imreq;
-  int opt;
-  struct em_packet packet;
-
   // Command line options
   int         client_id = 1;
   char *multicast_group = NULL;
@@ -100,7 +94,8 @@ int main(int argc, char*argv[]) {
   in_addr_t   interface = INADDR_ANY;
   uint16_t         port = DEFAULT_PORT;
 
-  while ((opt = getopt(argc, argv, "i:g:p:c:k")) != -1) {
+  int opt;
+  while ((opt = getopt(argc, argv, "i:g:p:c:k:")) != -1) {
     switch (opt) {
     case 'i':
       interface = get_interface(optarg);
@@ -127,6 +122,8 @@ int main(int argc, char*argv[]) {
     show_usage(argv[0]);
   }
 
+  printf("Client idx #%u, encryption %s\n", client_id, encryption_key ? "enabled" : "disabled");
+
   // Open our output device. Enable for all KEY_* and BTN_*.
   struct libevdev_uinput *uiodev;
   struct libevdev *odev = libevdev_new();
@@ -149,21 +146,29 @@ int main(int argc, char*argv[]) {
     exit(-1);
   }
 
-  sockfd = socket(AF_INET,SOCK_DGRAM,0);
+  int sockfd = socket(AF_INET,SOCK_DGRAM,0);
 
+  struct sockaddr_in servaddr;
   memset((void *)&servaddr, 0, sizeof(servaddr));
   servaddr.sin_family = AF_INET;
   servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
   servaddr.sin_port = htons(port);
   bind(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr));
 
+  struct ip_mreq imreq;
+  memset(&imreq, 0, sizeof(imreq));
   imreq.imr_multiaddr.s_addr = inet_addr(multicast_group ? multicast_group : DEFAULT_MULTICAST_GROUP);
   imreq.imr_interface.s_addr = interface;
 
   setsockopt(sockfd, IPPROTO_IP, IP_ADD_MEMBERSHIP,
             (const void *)&imreq, sizeof(struct ip_mreq));
 
+  printf("Listening for events at %s:%u\n",
+    multicast_group ? multicast_group : DEFAULT_MULTICAST_GROUP,
+    port);
+
   for (;;) {
+    struct em_packet packet;
     size_t n = recvfrom(sockfd, &packet, MAX_PACKET_SIZE, 0, NULL, 0);
     if (n < MIN_PACKET_SIZE) continue;
     if (packet.clientIdx != client_id) continue;
