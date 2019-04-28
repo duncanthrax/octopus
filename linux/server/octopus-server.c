@@ -303,7 +303,6 @@ int main(int argc, char* argv[]) {
                 int rc = libevdev_uinput_write_event(dev->uidev, type, code, value);
                 if (rc != 0) {
                     printf("Device #%d: Sending event failed with rc %d, deactivating.\n", dev->idx, rc);
-                    dev->active = 0;
                     return 0;
                 }
             }
