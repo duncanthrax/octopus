@@ -124,7 +124,6 @@ int main(int argc, char*argv[]) {
 
   printf("Client idx #%u, encryption %s\n", client_id, encryption_key ? "enabled" : "disabled");
 
-  // Open our output device. Enable for all KEY_* and BTN_*.
   struct libevdev_uinput *uiodev;
   struct libevdev *odev = libevdev_new();
   libevdev_set_name(odev, "Octopus Output");
