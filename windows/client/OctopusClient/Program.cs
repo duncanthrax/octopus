@@ -219,6 +219,7 @@ namespace OctopusClient
                         type = encreader.ReadUInt16();
                         code = encreader.ReadUInt16();
                         value = encreader.ReadInt32();
+                        encreader.Close();
                     }
                     else if (enc == 0) {
                         UInt32 rnd = reader.ReadUInt32();
@@ -226,7 +227,8 @@ namespace OctopusClient
                         code = reader.ReadUInt16();
                         value = reader.ReadInt32();
                     }
-                    else continue;
+
+                    reader.Close();
                     
                     //Console.WriteLine("Type:" + type + " Code:" + code + " Value:" + value);
                     //continue;
@@ -239,8 +241,12 @@ namespace OctopusClient
                         }
                     }
                     else if (type == (uint)LinuxEventTypes.EV_KEY) {
+
                         if (code >= (uint)UsefulConst.BTN_MIN && code <= (uint)UsefulConst.BTN_MAX) {
                             // Mouse Buttons
+
+                            if (value == 2) continue;   // Don't send repeats
+
                             if (code == (uint)UsefulConst.BTN_LEFT) {
                                 StackMouseInput(0, 0, 0, value > 0 ? (uint)MouseEventFlags.MOUSEEVENTF_LEFTDOWN
                                                                : (uint)MouseEventFlags.MOUSEEVENTF_LEFTUP);
@@ -301,8 +307,20 @@ namespace OctopusClient
     class Program
     {
         static void Main(string[] args) {
+            // Defaults
+            byte clientNum = 1;
+            string encKey = "octopus";
+
+            if (args.Length > 0 && !string.IsNullOrEmpty(args[0])) {
+                clientNum = byte.Parse(args[0]);
+            }
+
+            if (args.Length > 1 && !string.IsNullOrEmpty(args[1])) {
+                encKey = args[1];
+            }
+
             OctopusClient octopusClient = new OctopusClient();
-            octopusClient.Run(byte.Parse(args[0]), args[1]);
+            octopusClient.Run(clientNum, encKey);
         }
     }
 }
